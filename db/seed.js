@@ -138,21 +138,6 @@ async function createTables() {
 }
 
 
-// async function createInitialPosts() {
-//   try {
-//     const [albert, sandra, glamgal] = await getAllUsers();
-
-//     await createPost({
-//       authorId: albert.id,
-//       title: "First Post",
-//       content: "This is my first post. I hope I love writing blogs as much as I love writing them."
-//     });
-
-//   } catch (error) {
-//     throw error;
-//   }
-// }
-
 async function createInitialPosts() {
   try {
     const [albert, sandra, glamgal] = await getAllUsers();
@@ -193,7 +178,6 @@ async function rebuildDB() {
     await createTables();
     await createInitialUsers();
     await createInitialPosts();
-    // await createInitialTags();
   } catch (error) {
     throw error;
   }
