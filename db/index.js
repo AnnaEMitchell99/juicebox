@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { Client } = require('pg'); 
 
 
@@ -56,22 +58,70 @@ async function updateUser(id, fields = {}) {
   }
 }
 
-async function createPost({ authorId, title, content, tags = [] }) {
+async function createTags(tagList) {
+  if (tagList.length === 0) { 
+    return []; 
+  }
+  const insertValues = tagList.map(
+    (_, index) => `($${index + 1})`).join(', ');
+
+  const selectValues = tagList.map(
+    (_, index) => `$${index + 1}`).join(', ');
+
   try {
-    const { rows: [ post ] } = await client.query(`
-    INSERT INTO posts("authorId", title, content)
-    VALUES ($1, $2, $3)
-    RETURNING *;
-  `, [authorId, title, content]);
+    await client.query(`
+      INSERT INTO tags(name)
+      VALUES ${insertValues}
+      ON CONFLICT (name) DO NOTHING;
+    `, tagList);
 
-    const tagList = await createTags(tags);
+    const { rows } = await client.query(`
+      SELECT * FROM tags
+      WHERE name IN (${selectValues});
+    `, tagList);
 
-  return await addTagsToPost(post.id, tagList);
-
+    return rows;
   } catch (error) {
     throw error;
   }
 }
+
+async function addTagsToPost(postId, tagList) {
+  try {
+    const createPostTagPromises = tagList.map(
+      tag => createPostTag(postId, tag.id)
+    );
+
+    await Promise.all(createPostTagPromises);
+
+    return await getPostById(postId);
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function createPost({ authorId, title, content, tags = [] }) {
+  try {
+    if (!client) {
+      throw new Error('Database client is not connected');
+    }
+
+    const { rows: [ post ] } = await client.query(`
+      INSERT INTO posts("authorId", title, content)
+      VALUES ($1, $2, $3)
+      RETURNING *;
+    `, [authorId, title, content]);
+
+    const tagList = await createTags(tags);
+
+    return await addTagsToPost(post.id, tagList);
+
+  } catch (error) {
+    console.error('Error creating post:', error);
+    throw error;
+  }
+}
+
 
 async function updatePost(postId, fields = {}) {
   
@@ -178,35 +228,6 @@ async function getUserById(userId) {
   }
 }
 
-
-async function createTags(tagList) {
-  if (tagList.length === 0) { 
-    return []; 
-  }
-  const insertValues = tagList.map(
-    (_, index) => `($${index + 1})`).join(', ');
-
-  const selectValues = tagList.map(
-    (_, index) => `$${index + 1}`).join(', ');
-
-  try {
-    await client.query(`
-      INSERT INTO tags(name)
-      VALUES ${insertValues}
-      ON CONFLICT (name) DO NOTHING;
-    `, tagList);
-
-    const { rows } = await client.query(`
-      SELECT * FROM tags
-      WHERE name IN (${selectValues});
-    `, tagList);
-
-    return rows;
-  } catch (error) {
-    throw error;
-  }
-}
-
 async function createPostTag(postId, tagId) {
   try {
     await client.query(`
@@ -220,21 +241,6 @@ async function createPostTag(postId, tagId) {
 }
 
 
-async function addTagsToPost(postId, tagList) {
-  try {
-    const createPostTagPromises = tagList.map(
-      tag => createPostTag(postId, tag.id)
-    );
-
-    await Promise.all(createPostTagPromises);
-
-    return await getPostById(postId);
-  } catch (error) {
-    throw error;
-  }
-}
-
-
 async function getPostById(postId) {
   try {
     const { rows: [ post ]  } = await client.query(`
@@ -242,6 +248,13 @@ async function getPostById(postId) {
       FROM posts
       WHERE id=$1;
     `, [postId]);
+
+    if (!post) {
+      throw {
+        name: "PostNotFoundError",
+        message: "Could not find a post with that postId"
+      };
+    }
 
     const { rows: tags } = await client.query(`
       SELECT tags.*
@@ -286,6 +299,34 @@ async function getPostsByTagName(tagName) {
   }
 } 
 
+async function getAllTags() {
+  try {
+    const { rows } = await
+    client.query(`
+    SELECT *
+    FROM tags;
+    `);
+
+    return rows
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function getUserByUsername(username) {
+  try {
+    const { rows: [user] } = await client.query(`
+      SELECT *
+      FROM users
+      WHERE username=$1;
+    `, [username]);
+
+    return user;
+  } catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   client,
   getAllUsers,
@@ -301,4 +342,6 @@ module.exports = {
   addTagsToPost,
   getPostById,
   getPostsByTagName,
+  getAllTags,
+  getUserByUsername
 }
